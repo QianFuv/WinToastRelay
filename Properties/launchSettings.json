@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "WinToastRelay (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "WinToastRelay (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
