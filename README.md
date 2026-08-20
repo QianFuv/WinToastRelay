@@ -40,32 +40,31 @@ The project is intentionally packaged because the Windows notification listener 
 
 Create a local code-signing certificate once. The generated files are ignored by Git.
 
-The package publisher is `RavelloH` (`CN=RavelloH` in the signing certificate). The package requests exactly one capability: `runFullTrust`. This is required for the packaged WinUI 3 desktop executable and its optional Windows startup task; it does not grant notification-listener access. Access to Windows notifications is separately requested at runtime through `UserNotificationListener.RequestAccessAsync` and can be denied or revoked by the user. No AI-model capability is declared.
+The package publisher display name is `RavelloH`, and the package requests exactly one capability: `runFullTrust`. This is required for the packaged WinUI 3 desktop executable and its optional Windows startup task; it does not grant notification-listener access. Access to Windows notifications is separately requested at runtime through `UserNotificationListener.RequestAccessAsync` and can be denied or revoked by the user. No AI-model capability is declared.
+
+The Store submission uses the reserved package identity `RavelloH.WinToastRelay` and Publisher `CN=184C7048-0661-4259-8EE3-39EFE462DFBE`. This is different from the original local development identity. Microsoft Store will re-sign the submitted package; the temporary matching certificate below is only for producing a package that can be uploaded to Partner Center.
+
+Create a temporary certificate whose subject matches the reserved Store Publisher and use it only during packaging:
 
 ```powershell
-.\scripts\New-DevCertificate.ps1 -Password "choose-a-local-password"
-dotnet publish .\WinToastRelay.csproj -r win-x64 -p:Platform=x64 -p:Configuration=Debug `
-  -p:GenerateAppxPackageOnBuild=true `
-  -p:PackageCertificateKeyFile="$PWD\certs\WinToastRelay-dev.pfx" `
-  -p:PackageCertificatePassword="choose-a-local-password"
+.\scripts\New-DevCertificate.ps1 `
+  -Subject "CN=184C7048-0661-4259-8EE3-39EFE462DFBE" `
+  -OutputName "WinToastRelay-store-upload" `
+  -Password "choose-a-temporary-password" `
+  -ValidYears 1
+dotnet publish .\WinToastRelay.csproj -r win-x64 -p:Platform=x64 -p:Configuration=Release `
+  -p:GenerateAppxPackageOnBuild=true -p:AppxBundle=Always -p:AppxBundlePlatforms=x64 `
+  -p:PackageCertificateKeyFile="$PWD\certs\WinToastRelay-store-upload.pfx" `
+  -p:PackageCertificatePassword="choose-a-temporary-password"
 ```
 
-For local sideloading, run the generated `Add-AppDevPackage.ps1` from the package output directory and allow it to install the matching `.cer` into the **Local Computer → Trusted People** store. You can also import that `.cer` manually with administrator approval. Without that step, Windows reports `0x800B010A` because a self-signed certificate has no trusted root. The development certificate includes the non-CA Basic Constraints extension required by MSIX sideloading. A public release must use a certificate trusted by the intended recipients, or Microsoft Store signing; never publish the development PFX.
+Upload the resulting `.msixbundle` from `AppPackages` under **管理程序包** in Partner Center. Do not upload the `.cer`; Microsoft Store replaces the package signature when the submission is accepted.
+
+For local sideloading, run the generated `Add-AppDevPackage.ps1` from the package output directory and allow it to install the matching `.cer` into the **Local Computer → Trusted People** store. You can also import that `.cer` manually with administrator approval. The temporary certificate includes the non-CA Basic Constraints extension required by MSIX sideloading. Do not publish the temporary PFX or CER as a public signing identity; Microsoft Store replaces the signature for Store distribution.
 
 ### Certificate troubleshooting
 
-Use the `.msix` and `.cer` from the same output directory. Do not install the older `*_x64_Debug.msix` left by previous builds: it is signed by the old `CN=WinToastRelay` certificate. The current package is signed by `CN=RavelloH`. If Windows reports `0x800B0109` or `0x87e80034`, import the matching `.cer` into **Local Computer → Trusted People** and then install the matching `.msix`.
-
-## GitHub releases
-
-The `Release` workflow runs only for a newly pushed tag in the `vMAJOR.MINOR.PATCH` form (for example, `v1.0.17`) or when manually run for an existing tag. It tests the project, synchronizes the MSIX package version from the tag, builds a signed x64 bundle, uploads the build artifact, and creates or updates the matching GitHub Release.
-
-Create a protected GitHub Environment named `release` with required reviewers, then configure these Environment secrets before creating a release:
-
-- `MSIX_CERTIFICATE_BASE64`: Base64 of the release signing PFX. Generate it locally with `[Convert]::ToBase64String([IO.File]::ReadAllBytes('certs\\WinToastRelay-dev.pfx'))` and paste the resulting single-line value into the secret.
-- `MSIX_CERTIFICATE_PASSWORD`: Password that protects that PFX.
-
-Use the same long-lived release certificate whose subject is exactly `CN=RavelloH` for every official update; do not commit its PFX or reuse an unrelated personal certificate. The workflow derives and publishes the matching public `WinToastRelay.cer`, while the PFX only exists in the runner's temporary directory and is removed at the end of the job. A self-signed certificate is suitable for private or early-access releases, but users must explicitly trust the accompanying `.cer`. For a public long-term release, Microsoft Store signing is preferred; a certificate issued by a trusted public code-signing CA is the alternative for direct downloads.
+Use the `.msix` and `.cer` from the same output directory. If Windows reports `0x800B0109` or `0x87e80034` during local sideloading, import the matching `.cer` into **Local Computer → Trusted People** and then install the matching `.msix`.
 
 ## Webhook payload
 

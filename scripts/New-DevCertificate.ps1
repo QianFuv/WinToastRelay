@@ -1,22 +1,24 @@
 param(
-    [string]$Password = "WinToastRelay-dev",
-    [int]$ValidYears = 2
+    [string]$Password = "WinToastRelay-store-upload",
+    [int]$ValidYears = 2,
+    [string]$Subject = "CN=184C7048-0661-4259-8EE3-39EFE462DFBE",
+    [string]$OutputName = "WinToastRelay-store-upload"
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $certificateDirectory = Join-Path $projectRoot "certs"
-$pfxPath = Join-Path $certificateDirectory "WinToastRelay-dev.pfx"
-$cerPath = Join-Path $certificateDirectory "WinToastRelay-dev.cer"
+$pfxPath = Join-Path $certificateDirectory "$OutputName.pfx"
+$cerPath = Join-Path $certificateDirectory "$OutputName.cer"
 
 New-Item -ItemType Directory -Force $certificateDirectory | Out-Null
 
 # MSIX sideloading requires a non-CA Basic Constraints extension.
 $certificate = New-SelfSignedCertificate `
     -Type CodeSigningCert `
-    -Subject "CN=RavelloH" `
-    -FriendlyName "RavelloH WinToastRelay Development Package Signing" `
+    -Subject $Subject `
+    -FriendlyName "WinToastRelay package signing ($Subject)" `
     -CertStoreLocation "Cert:\CurrentUser\My" `
     -KeyExportPolicy Exportable `
     -HashAlgorithm SHA256 `
