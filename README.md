@@ -2,6 +2,16 @@
 
 WinToastRelay is a native Windows 10/11 app that relays Windows toast notifications to a webhook in real time.
 
+<a href="https://apps.microsoft.com/detail/9MV8SL6JLV2D">
+  <img
+    src="https://developer.microsoft.com/store/badges/images/English_get-it-from-MS.png"
+    alt="Get it from Microsoft"
+    width="180"
+  />
+</a>
+
+-----
+
 <img width="930" height="624" alt="Snipaste_2026-08-20_23-44-58" src="https://github.com/user-attachments/assets/df4edc40-4873-437d-89de-3ea87fabdd25" />
 <img width="930" height="624" alt="Snipaste_2026-08-20_23-45-28" src="https://github.com/user-attachments/assets/730931f2-1d0f-4a5a-a59f-2e8f8b017a74" />
 <img width="930" height="624" alt="Snipaste_2026-08-20_23-46-02" src="https://github.com/user-attachments/assets/a4be89b6-a134-492b-aeb4-3a7c51e1e28e" />
