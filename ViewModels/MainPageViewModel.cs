@@ -76,7 +76,7 @@ public partial class MainPageViewModel : ObservableObject
             : (IsChinese ? "等待配置和权限" : "Waiting for setup and permission");
     public string StartRelayLabel => IsChinese ? "自动启动" : "Starts automatically";
     public string SetupCardTitle => IsChinese ? "先连接你的通知通道" : "Connect a notification destination";
-    public string SetupCardDescription => IsChinese ? "默认采用 Bark 链接格式；也可切换到通用 JSON Webhook。" : "Bark URLs are the default; a generic JSON webhook remains available.";
+    public string SetupCardDescription => IsChinese ? "默认使用 Bark JSON POST；也可切换到通用 JSON Webhook。" : "Bark JSON POST is the default; a generic JSON webhook remains available.";
     public Visibility SetupCardVisibility => IsDestinationConfigured ? Visibility.Collapsed : Visibility.Visible;
     public string StatsTitle => IsChinese ? "概览" : "Overview";
     public string StatsDeliveriesLabel => IsChinese ? "14 天传递" : "14-day deliveries";
@@ -104,8 +104,8 @@ public partial class MainPageViewModel : ObservableObject
     public string BarkTemplateBodyLabel => IsChinese ? "正文模板" : "Body template";
     public string BarkTemplateDescription => IsChinese ? "可用变量：{app}、{title}、{body}、{id}、{eventType}、{createdAt}" : "Variables: {app}, {title}, {body}, {id}, {eventType}, {createdAt}";
     public string BarkParametersLabel => IsChinese ? "附加 Bark 参数" : "Additional Bark parameters";
-    public string BarkParametersDescription => IsChinese ? "每行 key=value，例如 sound=bell、group=work、level=timeSensitive、url=https://example.com。" : "One key=value per line, e.g. sound=bell, group=work, level=timeSensitive, url=https://example.com.";
-    public string BarkRouteDescription => IsChinese ? "请求将按 /设备密钥/标题/正文?参数 发送。所有内容会自动 URL 编码。" : "Requests use /device-key/title/body?parameters. Every value is URL-encoded automatically.";
+    public string BarkParametersDescription => IsChinese ? "每行 key=value，例如 sound=bell、group=work、level=timeSensitive、url=https://example.com；这些参数会作为 JSON 字段发送。" : "One key=value per line, e.g. sound=bell, group=work, level=timeSensitive, url=https://example.com. They are sent as JSON fields.";
+    public string BarkRouteDescription => IsChinese ? "请求使用 Bark /push JSON POST。设备密钥、标题、正文和附加参数都放在请求体中，不受 URL 长度限制；正文过长时会自动截断并标记。" : "Requests use Bark's /push JSON POST. The device key, title, body, and additional parameters stay in the request body, avoiding URL length limits; oversized text is truncated and marked automatically.";
     public string BearerTokenLabel => IsChinese ? "Bearer Token（可选）" : "Bearer token (optional)";
     public string BearerTokenDescription => IsChinese ? "令牌保存于 Windows 凭据管理器，不写入配置文件。" : "Stored in Windows Credential Manager, never in the settings file.";
     public string SaveLabel => IsChinese ? "保存设置" : "Save settings";

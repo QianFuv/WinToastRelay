@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using WinToastRelay.Models;
 using WinToastRelay.Services;
@@ -48,7 +49,7 @@ public sealed class WebhookClientTests
     }
 
     [Fact]
-    public async Task DeliverAsync_BarkMode_UsesPathTemplatesAndCustomParameters()
+    public async Task DeliverAsync_BarkMode_PostsJsonToPushEndpointWithTemplatesAndCustomParameters()
     {
         using var listener = new HttpListener();
         listener.Prefixes.Add("http://127.0.0.1:18766/");
@@ -58,7 +59,7 @@ public sealed class WebhookClientTests
         var payload = new WebhookPayload(
             "notification.added",
             "delivery-bark",
-            new RelayNotification(9, "Mail", "Build passed", "Ship it", DateTimeOffset.Parse("2026-08-20T00:00:00Z")));
+            new RelayNotification(9, "Mail", "Build passed", new string('长', 3000), DateTimeOffset.Parse("2026-08-20T00:00:00Z")));
         var target = new RelayDeliveryTarget(
             RelayDeliveryTarget.BarkMode,
             string.Empty,
@@ -67,25 +68,34 @@ public sealed class WebhookClientTests
             "device-key",
             "{app}: {title}",
             "{body}",
-            "sound=bell\ngroup=builds");
+            "sound=bell\ngroup=builds\nbadge=3");
 
         var deliveryTask = new WebhookClient().DeliverAsync(target, payload);
         var context = await requestTask;
         var method = context.Request.HttpMethod;
         var path = context.Request.RawUrl?.Split('?')[0];
-        var sound = context.Request.QueryString["sound"];
-        var group = context.Request.QueryString["group"];
         var deliveryId = context.Request.Headers["X-WinToastRelay-Delivery"];
+        using var reader = new StreamReader(context.Request.InputStream);
+        var body = await reader.ReadToEndAsync();
         context.Response.StatusCode = (int)HttpStatusCode.OK;
         context.Response.Close();
 
         var result = await deliveryTask;
 
         Assert.True(result.Succeeded);
-        Assert.Equal("GET", method);
-        Assert.Equal("/device-key/Mail%3A%20Build%20passed/Ship%20it", path);
-        Assert.Equal("bell", sound);
-        Assert.Equal("builds", group);
+        Assert.Equal("POST", method);
+        Assert.Equal("/push", path);
         Assert.Equal("delivery-bark", deliveryId);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("device-key", json.RootElement.GetProperty("device_key").GetString());
+        Assert.Equal("Mail: Build passed", json.RootElement.GetProperty("title").GetString());
+        var barkBody = json.RootElement.GetProperty("body").GetString();
+        Assert.NotNull(barkBody);
+        Assert.StartsWith(new string('长', 100), barkBody);
+        Assert.EndsWith("[truncated by WinToastRelay]", barkBody);
+        Assert.True(Encoding.UTF8.GetByteCount(body) <= 3500);
+        Assert.Equal("bell", json.RootElement.GetProperty("sound").GetString());
+        Assert.Equal("builds", json.RootElement.GetProperty("group").GetString());
+        Assert.Equal(3, json.RootElement.GetProperty("badge").GetInt32());
     }
 }
