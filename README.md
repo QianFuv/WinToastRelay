@@ -121,7 +121,7 @@ The AppToken is stored in Windows Credential Manager. A request is considered de
 }
 ```
 
-The `X-WinToastRelay-Delivery` header contains the same delivery ID, making receiver-side deduplication straightforward. Transient failures (timeouts, 429 responses, and 5xx responses) are persisted locally and retried with exponential backoff. Other failed responses are persisted as dead letters and reported in the activity view for the active session.
+The `X-WinToastRelay-Delivery` header contains the same delivery ID, making receiver-side deduplication straightforward. Transient failures (timeouts, 429 responses, 5xx responses, and temporary WxPusher business errors) are persisted locally and retried with exponential backoff. Other failed responses are persisted as dead letters and reported in the activity view for the active session.
 
 ## Privacy
 

@@ -15,6 +15,10 @@ public sealed class WebhookClient
     private const int BarkPayloadByteLimit = 3500;
     private const string BarkTruncationSuffix = "\n[truncated by WinToastRelay]";
     private const int WxPusherSuccessCode = 1000;
+    private const int WxPusherBusinessFailureCode = 1001;
+    private const int WxPusherUnauthorizedCode = 1002;
+    private const int WxPusherSignatureFailureCode = 1003;
+    private const int WxPusherNotFoundCode = 1004;
     private const int WxPusherSummaryCharacterLimit = 100;
     private const int WxPusherTopicLimit = 5;
     private const int WxPusherUidLimit = 2000;
@@ -90,7 +94,7 @@ public sealed class WebhookClient
                 return new DeliveryResult(false, $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}", retryable);
 
             return target.IsWxPusher
-                ? CreateWxPusherResult(await response.Content.ReadAsStringAsync())
+                ? CreateWxPusherResult(await response.Content.ReadAsStringAsync(), CountWxPusherRecipients(target))
                 : new DeliveryResult(true, $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}", false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -174,7 +178,7 @@ public sealed class WebhookClient
         return json.ToJsonString();
     }
 
-    private static DeliveryResult CreateWxPusherResult(string responseBody)
+    private static DeliveryResult CreateWxPusherResult(string responseBody, int expectedRecipientCount)
     {
         try
         {
@@ -189,12 +193,54 @@ public sealed class WebhookClient
                 message = messageElement.GetString();
 
             var detail = string.IsNullOrWhiteSpace(message) ? $"WxPusher {code}" : $"WxPusher {code} {message}";
-            return new DeliveryResult(code == WxPusherSuccessCode, detail, false);
+            if (code != WxPusherSuccessCode)
+                return new DeliveryResult(false, detail, IsWxPusherBusinessErrorRetryable(code));
+
+            if (!json.RootElement.TryGetProperty("data", out var dataElement) || dataElement.ValueKind != JsonValueKind.Array)
+                return new DeliveryResult(false, "Invalid WxPusher response: missing recipient results", true);
+
+            var recipientCount = dataElement.GetArrayLength();
+            if (recipientCount != expectedRecipientCount)
+                return new DeliveryResult(false,
+                    $"Invalid WxPusher response: expected {expectedRecipientCount} recipient results, received {recipientCount}", true);
+
+            var failedCodes = new List<int>();
+            foreach (var recipient in dataElement.EnumerateArray())
+            {
+                if (recipient.ValueKind != JsonValueKind.Object ||
+                    !recipient.TryGetProperty("code", out var recipientCodeElement) ||
+                    !recipientCodeElement.TryGetInt32(out var recipientCode))
+                    return new DeliveryResult(false, "Invalid WxPusher response: malformed recipient result", true);
+                if (recipientCode != WxPusherSuccessCode) failedCodes.Add(recipientCode);
+            }
+
+            if (failedCodes.Count == 0) return new DeliveryResult(true, detail, false);
+
+            var failedCodeList = string.Join(", ", failedCodes.Distinct().Order());
+            return new DeliveryResult(false,
+                $"{detail} · Recipients failed: {failedCodes.Count}/{recipientCount} · Codes: {failedCodeList}",
+                failedCodes.Any(IsWxPusherBusinessErrorRetryable));
         }
         catch (JsonException)
         {
             return new DeliveryResult(false, "Invalid WxPusher response", true);
         }
+    }
+
+    private static bool IsWxPusherBusinessErrorRetryable(int code) => code switch
+    {
+        WxPusherBusinessFailureCode or
+        WxPusherUnauthorizedCode or
+        WxPusherSignatureFailureCode or
+        WxPusherNotFoundCode => false,
+        _ => true,
+    };
+
+    private static int CountWxPusherRecipients(RelayDeliveryTarget target)
+    {
+        var count = ParseWxPusherValues(target.WxPusherUids).Length;
+        if (TryParseWxPusherTopicIds(target.WxPusherTopicIds, out var topicIds)) count += topicIds.Length;
+        return count;
     }
 
     private static void FitBarkTextProperty(JsonObject json, string propertyName, string originalValue)

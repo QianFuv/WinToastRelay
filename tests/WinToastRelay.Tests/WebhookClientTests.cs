@@ -135,7 +135,7 @@ public sealed class WebhookClientTests
         var authorization = context.Request.Headers["Authorization"];
         using var reader = new StreamReader(context.Request.InputStream);
         var body = await reader.ReadToEndAsync();
-        var responseBytes = Encoding.UTF8.GetBytes("{\"code\":1000,\"msg\":\"处理成功\",\"data\":[]}");
+        var responseBytes = Encoding.UTF8.GetBytes("{\"code\":1000,\"msg\":\"处理成功\",\"data\":[{\"code\":1000},{\"code\":1000},{\"code\":1000},{\"code\":1000}]}");
         context.Response.StatusCode = (int)HttpStatusCode.OK;
         context.Response.ContentType = "application/json";
         context.Response.ContentLength64 = responseBytes.Length;
@@ -199,5 +199,129 @@ public sealed class WebhookClientTests
         Assert.False(result.Succeeded);
         Assert.False(result.Retryable);
         Assert.Equal("WxPusher 1001 业务异常", result.Detail);
+    }
+
+    [Fact]
+    public async Task DeliverAsync_WxPusherMode_RejectsPartialRecipientFailure()
+    {
+        using var listener = new HttpListener();
+        listener.Prefixes.Add("http://127.0.0.1:18769/");
+        listener.Start();
+
+        var requestTask = listener.GetContextAsync();
+        var payload = new WebhookPayload(
+            "relay.test",
+            "delivery-wxpusher-partial",
+            new RelayNotification(0, "WinToastRelay", "Delivery test", "Test body", DateTimeOffset.Parse("2026-08-20T00:00:00Z")));
+        var target = new RelayDeliveryTarget(
+            RelayDeliveryTarget.WxPusherMode,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            WxPusherApiUrl: "http://127.0.0.1:18769/api/send/message",
+            WxPusherAppToken: "AT_test",
+            WxPusherUids: "UID_alpha\nUID_beta");
+
+        var deliveryTask = new WebhookClient().DeliverAsync(target, payload);
+        var context = await requestTask;
+        var responseBytes = Encoding.UTF8.GetBytes("{\"code\":1000,\"msg\":\"处理成功\",\"data\":[{\"uid\":\"UID_alpha\",\"code\":1000},{\"uid\":\"UID_beta\",\"code\":1001}]}");
+        context.Response.StatusCode = (int)HttpStatusCode.OK;
+        context.Response.ContentType = "application/json";
+        context.Response.ContentLength64 = responseBytes.Length;
+        await context.Response.OutputStream.WriteAsync(responseBytes);
+        context.Response.Close();
+
+        var result = await deliveryTask;
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.Retryable);
+        Assert.Contains("Recipients failed: 1/2", result.Detail);
+        Assert.Contains("Codes: 1001", result.Detail);
+    }
+
+    [Fact]
+    public async Task DeliverAsync_WxPusherMode_RetriesTransientBusinessFailure()
+    {
+        using var listener = new HttpListener();
+        listener.Prefixes.Add("http://127.0.0.1:18770/");
+        listener.Start();
+
+        var requestTask = listener.GetContextAsync();
+        var payload = new WebhookPayload(
+            "relay.test",
+            "delivery-wxpusher-transient",
+            new RelayNotification(0, "WinToastRelay", "Delivery test", "Test body", DateTimeOffset.Parse("2026-08-20T00:00:00Z")));
+        var target = new RelayDeliveryTarget(
+            RelayDeliveryTarget.WxPusherMode,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            WxPusherApiUrl: "http://127.0.0.1:18770/api/send/message",
+            WxPusherAppToken: "AT_test",
+            WxPusherUids: "UID_alpha");
+
+        var deliveryTask = new WebhookClient().DeliverAsync(target, payload);
+        var context = await requestTask;
+        var responseBytes = Encoding.UTF8.GetBytes("{\"code\":1005,\"msg\":\"服务器内部错误\",\"data\":null}");
+        context.Response.StatusCode = (int)HttpStatusCode.OK;
+        context.Response.ContentType = "application/json";
+        context.Response.ContentLength64 = responseBytes.Length;
+        await context.Response.OutputStream.WriteAsync(responseBytes);
+        context.Response.Close();
+
+        var result = await deliveryTask;
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.Retryable);
+        Assert.Equal("WxPusher 1005 服务器内部错误", result.Detail);
+    }
+
+    [Fact]
+    public async Task DeliverAsync_WxPusherMode_RejectsMissingRecipientResults()
+    {
+        using var listener = new HttpListener();
+        listener.Prefixes.Add("http://127.0.0.1:18771/");
+        listener.Start();
+
+        var requestTask = listener.GetContextAsync();
+        var payload = new WebhookPayload(
+            "relay.test",
+            "delivery-wxpusher-empty-results",
+            new RelayNotification(0, "WinToastRelay", "Delivery test", "Test body", DateTimeOffset.Parse("2026-08-20T00:00:00Z")));
+        var target = new RelayDeliveryTarget(
+            RelayDeliveryTarget.WxPusherMode,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            WxPusherApiUrl: "http://127.0.0.1:18771/api/send/message",
+            WxPusherAppToken: "AT_test",
+            WxPusherUids: "UID_alpha");
+
+        var deliveryTask = new WebhookClient().DeliverAsync(target, payload);
+        var context = await requestTask;
+        var responseBytes = Encoding.UTF8.GetBytes("{\"code\":1000,\"msg\":\"处理成功\",\"data\":[]}");
+        context.Response.StatusCode = (int)HttpStatusCode.OK;
+        context.Response.ContentType = "application/json";
+        context.Response.ContentLength64 = responseBytes.Length;
+        await context.Response.OutputStream.WriteAsync(responseBytes);
+        context.Response.Close();
+
+        var result = await deliveryTask;
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.Retryable);
+        Assert.Contains("expected 1 recipient results, received 0", result.Detail);
     }
 }
